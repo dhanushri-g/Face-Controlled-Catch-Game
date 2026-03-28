@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Catch Game with Face Control</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #f0f0f0;
+    }
+    canvas {
+      display: block;
+      background-color: #fffbe6;
+    }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.1/camera_utils.js"></script>
+
+<script>
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  let basketWidth = 200;
+  let basketHeight = 30;
+  let basketX = canvas.width / 2;
+
+  let fallingItems = [];
+  let itemSize = 30;
+  let fallingSpeed = 8;
+
+  let score = 0;
+  let highScore = localStorage.getItem('highScore') || 0;
+  let timeLeft = 45; // 45-second timer
+
+  function spawnItem(delay) {
+    setTimeout(() => {
+      fallingItems.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * -canvas.height
+      });
+    }, delay);
+  }
+
+  // Spawn two items with a 3 second delay
+  spawnItem(0);
+  spawnItem(3000);
+
+  function drawBasket() {
+    ctx.fillStyle = 'orange';
+    ctx.fillRect(basketX - basketWidth / 2, canvas.height - 60, basketWidth, basketHeight);
+  }
+
+  function drawItems() {
+    ctx.fillStyle = 'red';
+    fallingItems.forEach(item => {
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, itemSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  function drawScore() {
+    ctx.fillStyle = 'black';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText(`Score: ${score}`, 20, 40);
+    ctx.fillText(`High Score: ${highScore}`, 20, 70);
+    ctx.fillText(`Time Left: ${timeLeft}s`, 20, 100);
+  }
+
+  function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    drawBasket();
+    drawItems();
+    drawScore();
+
+    fallingItems.forEach(item => {
+      item.y += fallingSpeed;
+
+      // Check if item hits basket
+      if (
+        item.y + itemSize > canvas.height - 60 &&
+        item.x > basketX - basketWidth / 2 &&
+        item.x < basketX + basketWidth / 2
+      ) {
+        score++;
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem('highScore', highScore);
+        }
+        item.y = 0;
+        item.x = Math.random() * canvas.width;
+      }
+
+      // Reset if missed
+      if (item.y > canvas.height) {
+        item.y = 0;
+        item.x = Math.random() * canvas.width;
+      }
+    });
+
+    if (timeLeft > 0) {
+      requestAnimationFrame(gameLoop);
+    } else {
+      ctx.fillStyle = 'black';
+      ctx.font = '40px Arial';
+      ctx.fillText('Time Up!', canvas.width / 2 - 100, canvas.height / 2);
+    }
+  }
+
+  setInterval(() => {
+    if (timeLeft > 0) timeLeft--;
+  }, 1000);
+
+  // Load FaceMesh
+  const faceMesh = new FaceMesh({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+  });
+
+  faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+
+  faceMesh.onResults((results) => {
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+      const landmarks = results.multiFaceLandmarks[0];
+      const nose = landmarks[1];
+      const noseX = nose.x;
+      basketX += (noseX * canvas.width - basketX) * 0.2;
+    }
+  });
+
+  const videoElement = document.createElement('video');
+  document.body.appendChild(videoElement);
+
+  videoElement.style.position = 'fixed';
+  videoElement.style.bottom = '10px';
+  videoElement.style.left = '10px';
+  videoElement.style.width = '200px';
+  videoElement.style.border = '2px solid black';
+  videoElement.style.zIndex = '10';
+
+  const camera = new Camera(videoElement, {
+    onFrame: async () => {
+      await faceMesh.send({ image: videoElement });
+    },
+    width: 640,
+    height: 480
+  });
+  camera.start();
+
+  gameLoop();
+</script>
+</body>
+</html>
